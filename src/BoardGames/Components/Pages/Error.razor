@@ -1,0 +1,17 @@
+@page "/Error"
+@using System.Diagnostics
+<PageTitle>Errore</PageTitle>
+<main class="page narrow">
+    <section class="panel center-block">
+        <p class="eyebrow">ERRORE</p>
+        <h1 class="display">Qualcosa è andato storto.</h1>
+        <p>Il server ha registrato il problema.</p>
+        @if (!string.IsNullOrEmpty(RequestId)) { <p><small>Request ID: <code>@RequestId</code></small></p> }
+        <a class="btn btn-primary" href="">Torna alla sala giochi</a>
+    </section>
+</main>
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    private string? RequestId { get; set; }
+    protected override void OnInitialized() => RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

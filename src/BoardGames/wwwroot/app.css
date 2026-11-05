@@ -1,0 +1,22 @@
+/* Host lobby. Shared tokens and controls come from _content/BoardGames.Core/boardgames.css. */
+/* ---------- lobby ---------- */
+.hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 24px 0 40px; }
+.hero .lede { font-size: 19px; max-width: 520px; margin: 20px 0 0; }
+.hero-art { position: relative; aspect-ratio: 16/10; }
+.hero-art .tile { position: absolute; border: 3px solid var(--ink); background: var(--cream); box-shadow: var(--shadow); display: grid; place-items: center; font-size: 46px; border-radius: 12px; }
+.games { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
+.game-card { display: flex; flex-direction: column; overflow: hidden; text-decoration: none; transition: transform .15s; }
+.game-card:hover { transform: translate(-2px, -3px) rotate(-.3deg); }
+.game-card .cover { aspect-ratio: 16/9; border-bottom: 3px solid var(--ink); background: var(--paper) center/cover no-repeat; }
+.game-card .body { padding: 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.game-card h2 { font: 26px var(--font-display); margin: 0; letter-spacing: -1px; }
+.game-card .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.game-card.soon { opacity: .7; border-style: dashed; box-shadow: none; }
+.accent-coral .chip { background: #fde3df; }
+.accent-teal .chip { background: var(--teal-soft); }
+
+
+@media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-art { display: none; }
+}

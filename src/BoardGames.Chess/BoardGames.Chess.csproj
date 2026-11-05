@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Gera.Chess" Version="1.2.0" />
+    <ProjectReference Include="..\BoardGames.Core\BoardGames.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="BoardGames.Tests" />
+  </ItemGroup>
+</Project>

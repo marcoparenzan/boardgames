@@ -1,0 +1,403 @@
+@page "/developy/{Code}"
+@implements IDisposable
+@inject DevelopyRooms Rooms
+@inject ProtectedSessionStorage Storage
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Developy · Room @Code</PageTitle>
+
+<div class="dv">
+@if (room is null)
+{
+    <section class="dv-center">
+        @if (loading) { <p class="eyebrow">CONNESSIONE ALLA WAR ROOM…</p> }
+        else
+        {
+            <div class="dv-dialog">
+                <p class="eyebrow">ROOM @Code</p>
+                <h2>Stanza non trovata</h2>
+                <p>Il codice è sbagliato oppure la stanza è scaduta per inattività.</p>
+                <a class="primary wide" href="developy">TORNA A DEVELOPY <b>→</b></a>
+            </div>
+        }
+    </section>
+}
+else if (view is { Started: false })
+{
+    <header class="dv-gamebar"><Brand Small="true" /><div class="room"><small>ROOM</small><b>@view.Code</b><button @onclick="CopyInvite">COPIA INVITO</button></div><div class="turn"><small>IN ATTESA</small></div></header>
+    <section class="dv-lobby">
+        <div class="dv-dialog wide-dialog">
+            <p class="eyebrow">WAR ROOM IN PREPARAZIONE</p>
+            <h2>Codice: <span class="code">@view.Code</span></h2>
+            <p>Manda il codice (o il link di invito) ai colleghi. La partita parte da sola quando tutti i posti sono occupati.</p>
+            <ul class="dv-seats">
+                @foreach (var s in view.Seats)
+                {
+                    var role = Catalog.RoleOf(s.Role);
+                    <li class="@(s.Kind == SeatKind.Open ? "open" : null)">
+                        <img src="@RoleImage(s.Role)" alt="" width="48" height="50" />
+                        <span><b>@s.Name</b>@if (s.Mine) { <em> (tu)</em> }<small>@role.Name · @(s.Kind switch { SeatKind.Bot => "bot", SeatKind.Open => "posto libero", _ => "umano" })</small></span>
+                    </li>
+                }
+            </ul>
+            @if (view.Watching && view.Seats.Any(s => s.Kind == SeatKind.Open))
+            {
+                <EditForm Model="this" OnValidSubmit="JoinRoom" class="dv-join">
+                    <label>IL TUO NOME<input @bind="joinName" @bind:event="oninput" maxlength="18" placeholder="es. Giulia" /></label>
+                    <RolePicker Selected="@joinRole" Taken="@view.Seats.Where(s => s.Kind != SeatKind.Open).Select(s => s.Role).ToArray()" OnPick="r => joinRole = r" />
+                    <button class="primary wide" type="submit">PRENDI POSTO <b>→</b></button>
+                </EditForm>
+            }
+            @if (view.IsHost)
+            {
+                <button class="secondary wide" @onclick="StartNow">AVVIA ORA · I POSTI LIBERI DIVENTANO BOT</button>
+            }
+        </div>
+        <Chat Lines="view.Chat" CanWrite="!view.Watching" OnSend="Say" />
+    </section>
+}
+else if (view is not null)
+{
+    var me = view.Players.FirstOrDefault(p => p.Mine && p.Seat == view.Current) ?? view.Players.FirstOrDefault(p => p.Mine);
+    var current = view.Players[view.Current];
+    <header class="dv-gamebar">
+        <Brand Small="true" />
+        <div class="room"><small>ROOM</small><b>@view.Code</b><button @onclick="CopyInvite">COPIA INVITO</button></div>
+        <div class="turn"><span style="background:@current.Color"></span><small>@Catalog.RoleOf(current.Role).Name.ToUpperInvariant()</small><b>@current.Name.ToUpperInvariant()</b></div>
+    </header>
+
+    <div class="dv-main">
+        <section class="dv-stage">
+            <div class="statusline">
+                <span>@StatusText(view, current)</span>
+                <span>ROUND @view.Round.ToString("00") / @view.MaxRounds <button class="link" @onclick="() => flat = !flat">@(flat ? "VISTA 3D" : "VISTA DALL'ALTO")</button></span>
+            </div>
+            <Wheel View="view" Shown="shown" Camera="camera" Flat="flat" Selected="selected" OnSelect="Select" />
+            <div class="dv-actions">
+                <div class="dice @(animating ? "rolling" : null)" aria-label="Dado: @view.LastRoll"><span>@DieFace(view.LastRoll)</span></div>
+                <div class="dv-action-body">
+                    @if (view.Phase == Phase.Over)
+                    {
+                        <b>Partita conclusa</b>
+                    }
+                    else if (!view.MyTurn)
+                    {
+                        <b>Tocca a @current.Name</b>
+                        <small>@(current.Bot ? "Il bot sta valutando il budget…" : "Aspetta la sua mossa.")</small>
+                    }
+                    else
+                    {
+                        @switch (view.Phase)
+                        {
+                            case Phase.Roll:
+                                @if (current.InMeeting) { <small>Sei nell'Endless Meeting (tentativo @(current.MeetingAttempts + 1)/3): tira 6 per uscire.</small> }
+                                <div class="btns">
+                                    <button class="primary" disabled="@Busy" @onclick="() => Do(ActKind.Roll)">LANCIA IL DADO <b>→</b></button>
+                                    @if (Has(ActKind.PayMeeting)) { <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.PayMeeting)">PAGA €@Catalog.MeetingFee</button> }
+                                    @if (Has(ActKind.TokenMeeting)) { <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.TokenMeeting)">✦ USA AI TOKEN</button> }
+                                    @if (Has(ActKind.PassMeeting)) { <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.PassMeeting)">📅 CALENDARIO BLOCCATO</button> }
+                                </div>
+                                break;
+                            case Phase.Buy:
+                                var space = Catalog.Board[current.Position];
+                                <small>@space.Name è libero. Fee base €@(space.Kind == SpaceKind.Cloud ? Catalog.CloudRent[0] : space.Rent![0]).</small>
+                                <div class="btns">
+                                    <button class="primary" disabled="@(Busy || !Has(ActKind.Buy))" @onclick="() => Do(ActKind.Buy, current.Position)">ACQUISISCI €@DevelopyGame.PriceFor(current.Role, current.Position) <b>→</b></button>
+                                    <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.Pass, current.Position)">RINUNCIA</button>
+                                </div>
+                                break;
+                            case Phase.Fee:
+                                <small>Consulting fee dovuta a @view.Players[view.Holdings[current.Position].Owner].Name.</small>
+                                <div class="btns">
+                                    <button class="primary" disabled="@Busy" @onclick="() => Do(ActKind.PayFee)">PAGA €@view.PendingFee</button>
+                                    <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.TokenFee)">✦ NEGOZIA: €@(view.PendingFee / 2)</button>
+                                </div>
+                                break;
+                            case Phase.Card:
+                                <small>Hai pescato un imprevisto.</small>
+                                break;
+                            case Phase.Debt:
+                                <small>Devi €@view.PendingDebt!.Amount (@view.PendingDebt.Reason), hai €@current.Cash. Congela progetti o riduci i team qui sotto.</small>
+                                <div class="btns">
+                                    <button class="primary" disabled="@(Busy || !Has(ActKind.PayDebt))" @onclick="() => Do(ActKind.PayDebt)">SALDA €@view.PendingDebt.Amount</button>
+                                    <button class="secondary danger" disabled="@Busy" @onclick="() => Do(ActKind.Bankrupt)">BANCAROTTA</button>
+                                </div>
+                                break;
+                            case Phase.End:
+                                <small>Puoi assumere team o congelare progetti prima di chiudere il turno.</small>
+                                <div class="btns">
+                                    <button class="primary" disabled="@Busy" @onclick="() => Do(ActKind.EndTurn)">FINE TURNO <b>→</b></button>
+                                    @if (Has(ActKind.Takeover)) { <button class="secondary" disabled="@Busy" @onclick="() => Do(ActKind.Takeover, current.Position)" title="Rilevi il progetto pagando il doppio del prezzo al proprietario">🦈 ACQUISIZIONE OSTILE €@DevelopyGame.TakeoverPrice(current.Position)</button> }
+                                </div>
+                                break;
+                        }
+                    }
+                </div>
+            </div>
+        </section>
+
+        <aside class="dv-side">
+            <section class="dv-card">
+                <h3>CONSULENTI</h3>
+                <ol class="dv-players">
+                    @foreach (var p in view.Players.OrderByDescending(p => p.NetWorth))
+                    {
+                        <li class="@(p.Seat == view.Current ? "current" : null) @(p.Bankrupt ? "out" : null)" style="--c:@p.Color">
+                            <img src="@RoleImage(p.Role)" alt="" width="40" height="41" />
+                            <span class="who"><b>@p.Name @(p.Mine ? "(tu)" : null)</b><small>@Catalog.RoleOf(p.Role).Name@(p.Bot ? " · bot" : null)@(p.InMeeting ? " · ☕ in meeting" : null)@(p.Bankrupt ? " · fuori" : null)</small></span>
+                            <span class="cash"><b>€@p.Cash.ToString("N0")</b><small>valore €@p.NetWorth.ToString("N0") · ✦@p.Tokens</small></span>
+                        </li>
+                    }
+                </ol>
+            </section>
+            @if (selected is { } sel)
+            {
+                <SpaceCard View="view" Index="sel" Busy="Busy" OnAct="a => Do(a.Kind, a.Space)" OnClose="() => selected = null" />
+            }
+            <section class="dv-card">
+                <h3>REGISTRO</h3>
+                <ol class="dv-log" reversed>
+                    @foreach (var e in view.Log.Reverse().Take(30))
+                    {
+                        <li style="--c:@(e.Seat >= 0 ? view.Players[e.Seat].Color : "var(--ink)")"><small>R@(e.Round)</small> @e.Text</li>
+                    }
+                </ol>
+            </section>
+            <Chat Lines="view.Chat" CanWrite="!view.Watching" OnSend="Say" />
+        </aside>
+    </div>
+
+    @if (me is not null)
+    {
+        <section class="dv-dashboard">
+            <article class="stat"><small>BUDGET DISPONIBILE</small><strong>€ @me.Cash.ToString("N0")</strong><em>valore aziendale € @me.NetWorth.ToString("N0")</em></article>
+            <article class="stat"><small>AI TOKENS</small><div class="token-row">@for (var i = 0; i < Catalog.MaxTokens; i++) { <i class="@(i >= me.Tokens ? "off" : null)">✦</i> }</div><em>@me.Tokens / @Catalog.MaxTokens · negozia fee o salta meeting@(me.MeetingPasses > 0 ? $" · 📅×{me.MeetingPasses}" : "")</em></article>
+            <article class="properties">
+                <div class="section-head"><span><small>@(me.Seat == view.Current ? "I TUOI PROGETTI" : $"PROGETTI DI {me.Name.ToUpperInvariant()}")</small><b>@Owned(me.Seat).Count() PROGETTI</b></span><small>@Catalog.RoleOf(me.Role).Perk</small></div>
+                <div class="property-grid">
+                    @foreach (var s in Owned(me.Seat))
+                    {
+                        var h = view.Holdings[s.Index];
+                        var acts = view.Options.Where(o => o.Space == s.Index && o.Kind is ActKind.Upgrade or ActKind.Downgrade or ActKind.Freeze or ActKind.Unfreeze).ToArray();
+                        <div class="project-card @(s.Group >= 0 ? Catalog.Groups[s.Group].Color : "cloud") @(h.Frozen ? "frozen" : null)" @onclick="() => Select(s.Index)">
+                            <div class="project-top"><span>@(s.Group >= 0 ? Catalog.Groups[s.Group].Name : "INFRASTRUTTURA")</span><b>€ @s.Price</b></div>
+                            <h4>@s.Name</h4>
+                            <p>Consulting fee <b>€ @h.Fee</b>@(h.Frozen ? " · ❄ congelato" : null)</p>
+                            <div class="team"><span>@(h.Level == Catalog.MaxLevel ? "ARCHITETTO" : s.Kind == SpaceKind.Cloud ? "CLOUD" : "SVILUPPATORI")</span><i>@Team(s, h)</i></div>
+                            @if (acts.Length > 0)
+                            {
+                                <div class="manage" @onclick:stopPropagation="true">
+                                    @foreach (var a in acts) { <button disabled="@Busy" @onclick="() => Do(a.Kind, a.Space)">@ActLabel(a, me.Role)</button> }
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (!Owned(me.Seat).Any()) { <p class="empty">Nessun progetto ancora. Atterra su una casella libera e acquisiscila.</p> }
+                </div>
+            </article>
+        </section>
+    }
+
+    @if (view.PendingCard is { } card)
+    {
+        <div class="event-card" role="dialog" aria-modal="@(view.MyTurn ? "true" : "false")">
+            <p class="eyebrow">UNEXPECTED EVENT · @current.Name.ToUpperInvariant()</p>
+            <div class="event-icon">@card.Icon</div>
+            <h2>@card.Title</h2>
+            <p>@card.Text</p>
+            @if (view.MyTurn) { <button class="primary wide" disabled="@Busy" @onclick="() => Do(ActKind.Accept)">ACCETTA L'INEVITABILE</button> }
+            else { <small>In attesa che @current.Name accetti…</small> }
+        </div>
+    }
+    @if (view.Phase == Phase.Over && !hideOver)
+    {
+        <div class="event-card over" role="dialog" aria-modal="true">
+            <p class="eyebrow">EXIT STRATEGY</p>
+            <div class="event-icon">🏆</div>
+            <h2>@string.Join(" & ", view.Winners.Select(w => view.Players[w].Name))</h2>
+            <p>vince con una valutazione di €@view.Players[view.Winners[0]].NetWorth.ToString("N0").</p>
+            <ol class="ranking">@foreach (var p in view.Players.OrderByDescending(p => p.NetWorth)) { <li>@p.Name <b>€@p.NetWorth.ToString("N0")</b></li> }</ol>
+            <div class="btns"><a class="primary" href="developy">NUOVA PARTITA</a><button class="secondary" @onclick="() => hideOver = true">GUARDA IL TABELLONE</button></div>
+        </div>
+    }
+}
+@if (!string.IsNullOrEmpty(toast)) { <div class="toast" role="status">@toast</div> }
+</div>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private DevelopyRoom? room;
+    private TableView? view;
+    private string? token;
+    private bool loading = true, flat, animating, sending, hideOver, disposed;
+    private int[] shown = [];
+    private double camera;
+    private int? selected;
+    private string toast = "", joinName = "", joinRole = "developer";
+    private CancellationTokenSource? toastCts;
+
+    private bool Busy => sending || animating;
+    private bool Has(ActKind kind) => view?.Options.Any(o => o.Kind == kind) == true;
+    private static string RoleImage(string role) => $"_content/BoardGames.Developy/assets/characters/{role}.webp";
+    private static string DieFace(int roll) => roll is >= 1 and <= 6 ? "⚀⚁⚂⚃⚄⚅"[roll - 1].ToString() : "⚄";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var key = "developy:" + RoomCodes.Normalize(Code);
+        try
+        {
+            var stored = await Storage.GetAsync<string>(key);
+            token = stored.Success ? stored.Value : null;
+        }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or JSException or InvalidOperationException) { token = null; }
+        if (token is null)
+        {
+            token = Guid.NewGuid().ToString("N");
+            try { await Storage.SetAsync(key, token); } catch (JSException) { }
+        }
+        room = Rooms.Find(Code);
+        loading = false;
+        if (room is not null)
+        {
+            room.Changed += OnRoomChanged;
+            view = room.View(token);
+            shown = view.Players.Select(p => p.Position).ToArray();
+            camera = TargetCamera(0);
+        }
+        StateHasChanged();
+    }
+
+    private void OnRoomChanged()
+    {
+        if (disposed) return;
+        _ = InvokeAsync(async () =>
+        {
+            if (disposed || room is null) return;
+            view = room.View(token);
+            if (view.Started && shown.Length != view.Players.Length) shown = view.Players.Select(p => p.Position).ToArray();
+            StateHasChanged();
+            await Animate();
+        });
+    }
+
+    /// <summary>Moves displayed tokens one space at a time toward the server positions; the camera follows the active player.</summary>
+    private async Task Animate()
+    {
+        if (animating || view is not { Started: true }) return;
+        animating = true;
+        try
+        {
+            while (!disposed && view is { } v)
+            {
+                var moved = false;
+                for (var i = 0; i < shown.Length; i++)
+                {
+                    var target = v.Players[i].Position;
+                    if (shown[i] == target) continue;
+                    var forward = (target - shown[i] + Catalog.Spaces) % Catalog.Spaces;
+                    var teleport = forward > 12 || (v.Players[i].InMeeting && target == Catalog.MeetingIndex) || v.Players[i].Bankrupt;
+                    shown[i] = teleport ? target : (shown[i] + 1) % Catalog.Spaces;
+                    moved = true;
+                }
+                if (!moved) break;
+                camera = TargetCamera(camera);
+                StateHasChanged();
+                await Task.Delay(170);
+            }
+            camera = TargetCamera(camera);
+        }
+        finally { animating = false; StateHasChanged(); }
+    }
+
+    private double TargetCamera(double from)
+    {
+        if (view is not { Started: true } || shown.Length == 0) return from;
+        var desired = -shown[view.Current] * 15.0;
+        var delta = ((desired - from) % 360 + 540) % 360 - 180;
+        return from + delta;
+    }
+
+    private async Task Do(ActKind kind, int space = -1)
+    {
+        if (room is null || view is null || token is null || Busy) return;
+        sending = true;
+        try { Rooms.Act(room, token, new Act(kind, space), view.Version); }
+        catch (InvalidOperationException ex) { await Toast(ex.Message); }
+        finally { sending = false; }
+    }
+
+    private async Task JoinRoom()
+    {
+        if (room is null || token is null) return;
+        try { Rooms.Join(room, token, joinName, joinRole); }
+        catch (InvalidOperationException ex) { await Toast(ex.Message); }
+    }
+
+    private async Task StartNow()
+    {
+        if (room is null || token is null) return;
+        try { Rooms.Start(room, token); }
+        catch (InvalidOperationException ex) { await Toast(ex.Message); }
+    }
+
+    private async Task Say(string text)
+    {
+        if (room is null || token is null) return;
+        try { Rooms.Say(room, token, text); }
+        catch (InvalidOperationException ex) { await Toast(ex.Message); }
+    }
+
+    private void Select(int index) => selected = selected == index ? null : index;
+
+    private async Task CopyInvite()
+    {
+        var link = $"{Navigation.BaseUri}developy/{RoomCodes.Normalize(Code)}";
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", link); await Toast("Link di invito copiato!"); }
+        catch (JSException) { await Toast($"Copia non disponibile: {link}"); }
+    }
+
+    private async Task Toast(string text)
+    {
+        toastCts?.Cancel();
+        var cts = toastCts = new CancellationTokenSource();
+        toast = text;
+        StateHasChanged();
+        try { await Task.Delay(2600, cts.Token); toast = ""; StateHasChanged(); } catch (TaskCanceledException) { }
+    }
+
+    private IEnumerable<Space> Owned(int seat) => Catalog.Board.Where(s => s.Buyable && view!.Holdings[s.Index].Owner == seat);
+
+    private static string Team(Space s, HoldingView h) =>
+        s.Kind == SpaceKind.Cloud ? "☁" : h.Level == Catalog.MaxLevel ? "◆" : string.Concat(Enumerable.Range(0, 3).Select(i => i < h.Level ? "● " : "○ ")).Trim();
+
+    internal static string ActLabel(Act a, string role) => a.Kind switch
+    {
+        ActKind.Upgrade => $"+ TEAM €{DevelopyGame.UpgradeCost(role, a.Space)}",
+        ActKind.Downgrade => $"− TEAM +€{DevelopyGame.UpgradeRefund(a.Space)}",
+        ActKind.Freeze => $"❄ CONGELA +€{DevelopyGame.FreezeValue(a.Space)}",
+        ActKind.Unfreeze => $"RIATTIVA €{DevelopyGame.UnfreezeCost(a.Space)}",
+        _ => a.Kind.ToString(),
+    };
+
+    private string StatusText(TableView v, PlayerView current) => v.Phase switch
+    {
+        Phase.Over => "PARTITA CONCLUSA",
+        _ when animating => "LA PIPELINE STA DECIDENDO IL TUO DESTINO…",
+        Phase.Roll => v.MyTurn ? "SCEGLI LA TUA PROSSIMA MOSSA" : $"TOCCA A {current.Name.ToUpperInvariant()}",
+        Phase.Buy => $"{Catalog.Board[current.Position].Name.ToUpperInvariant()} È SUL MERCATO",
+        Phase.Fee => "CONSULTING FEE IN ARRIVO",
+        Phase.Card => "IMPREVISTO!",
+        Phase.Debt => "SERVE LIQUIDITÀ",
+        _ => $"HAI FATTO {v.LastRoll}. ANALISI DEI REQUISITI IN CORSO…",
+    };
+
+    public void Dispose()
+    {
+        disposed = true;
+        if (room is not null) room.Changed -= OnRoomChanged;
+        toastCts?.Cancel();
+    }
+}

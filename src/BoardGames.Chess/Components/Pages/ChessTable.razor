@@ -1,0 +1,178 @@
+@page "/chess"
+@using BoardGames.Chess.Services
+@using System.Text.Json
+@inject ChessRooms Rooms
+@inject RalfAgent Ralf
+@inject ILogger<ChessTable> Logger
+@implements IDisposable
+
+<PageTitle>Scacchi con Ralf · MarcoSoft Board Games</PageTitle>
+<main class="page chess">
+    <SiteHeader />
+    <header class="row" style="justify-content:space-between;margin:8px 0 24px">
+        <div>
+            <p class="eyebrow"><span class="chip">MarcoSoft / Scacchi</span></p>
+            <h1 class="display">Il club dei pezzi<br /><em style="color:var(--teal)">fuori posto.</em></h1>
+            <p class="muted">Scacchi, colleghi e strategie discutibili. Le regole, però, sono serie.</p>
+        </div>
+        <div class="panel ralf-card"><div style="font-size:36px">🤓 ☕</div><b>Ralf è in ufficio.</b><p class="small">«Anche il re deve fare una mossa. Non basta convocare una riunione.»</p></div>
+    </header>
+    <section class="panel toolbar">
+        <button class="btn btn-mustard" disabled="@(busy || !Ralf.Connected)" @onclick="() => Start(false)">♟ Contro Ralf</button>
+        <button class="btn btn-teal" disabled="@busy" @onclick="() => Start(true)">⚔ Remote battle</button>
+        <input class="input" aria-label="Codice invito" placeholder="Codice" maxlength="12" @bind="invitation" />
+        <button class="btn" disabled="@busy" @onclick="Join">Partecipa</button>
+        <span class="small">@(Ralf.Connected ? $"● Ralf connesso · {Ralf.ModelName}" : "● Ralf non configurato: solo Remote battle")</span>
+    </section>
+    @if (!string.IsNullOrEmpty(error)) { <p role="alert" class="alert">@error @if (RalfToMove) { <button class="btn btn-small btn-mustard" style="margin-left:10px" @onclick="RalfMove">Riprova Ralf</button> }</p> }
+    @if (view is not null)
+    {
+        var last = view.Log.LastOrDefault()?.Mossa;
+        <div class="chess-layout">
+            <section>
+                <div class="status-row"><h2>@(view.Remote ? "Remote battle" : "Tu vs Ralf") · @(white ? "sei il Bianco" : "sei il Nero")</h2><span class="chip">@(busy ? $"Ralf sta pensando… {Elapsed} s" : view.Status)</span></div>
+                @if (busy)
+                {
+                    <div class="panel panel-body ralf-live @(Elapsed >= 30 ? "slow" : null)" role="status" aria-live="polite">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <div>
+                            <b>@ralfStage</b>
+                            <small>Tentativo @ralfAttempt/@RalfAgent.MaxAttempts · @Elapsed s@(Elapsed >= 30 ? " · il modello è lento, puoi interrompere e riprovare" : "")@(Elapsed >= 55 ? " · timeout a 60 s" : "")</small>
+                        </div>
+                        <button class="btn btn-small" @onclick="StopRalf">Interrompi</button>
+                    </div>
+                }
+                @if (view.Remote) { <div class="panel panel-body" style="background:var(--teal-soft);margin-bottom:16px">Invito: <strong style="letter-spacing:3px;user-select:all">@view.Code</strong><p class="small" style="margin:4px 0 0">@(view.Ready ? "Due giocatori presenti." : "In attesa del secondo giocatore. Condividi questo codice e l'indirizzo del sito.")</p></div> }
+                <div class="panel board-frame">
+                    <div class="chess-board" role="group" aria-label="Scacchiera">
+                        @for (var i = 0; i < 64; i++)
+                        {
+                            var index = white ? i : 63 - i;
+                            var sq = Square(index);
+                            var piece = view.Cells[index];
+                            var target = selected is not null && view.LegalMoves.Any(m => m.StartsWith(selected + sq));
+                            var cls = selected == sq ? "sel" : target ? "target" : (index / 8 + index % 8) % 2 == 0 ? "light" : "dark";
+                            var wasLast = last is not null && (last[..2] == sq || last[2..4] == sq);
+                            <button title="@sq" aria-label="@($"{sq} {piece}")" aria-pressed="@(selected == sq ? "true" : "false")" disabled="@(!CanPlay)" @onclick="() => Click(sq)" class="sq @cls @(wasLast ? "last" : null)">
+                                <span class="@(char.IsUpper(piece) ? "piece-w" : "piece-b")">@Glyph(piece)</span>
+                                <span class="coord">@sq</span>
+                                @if (target && piece == '.') { <span class="dot"></span> }
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="row" style="margin-top:14px"><p class="small" style="margin:0">Seleziona un pezzo, poi una casella evidenziata.</p><label class="small">Promozione <select class="input" style="padding:4px" @bind="promotion"><option value="q">Donna</option><option value="r">Torre</option><option value="b">Alfiere</option><option value="n">Cavallo</option></select></label></div>
+                <details class="panel panel-body" style="margin-top:20px"><summary style="font-weight:800;cursor:pointer">Protocollo / stato corrente</summary><p class="small">FEN: pezzi + turno + arrocco + en passant + contatori. UCI: e2e4, e7e8q. SAN nel registro.</p><pre class="protocol">Statocorrente: @(view.Log.LastOrDefault()?.StatoCorrente ?? view.Fen)
+mossa: @(view.Log.LastOrDefault()?.Mossa ?? "—")
+NuovoStato: @view.Fen</pre></details>
+            </section>
+            <aside class="stack">
+                <section class="panel" style="overflow:hidden"><h2 class="panel-head" style="background:var(--teal-soft)">💬 La chat del tavolo</h2>
+                    <div class="chat-feed" aria-live="polite">
+                        @foreach (var line in view.Chat.Reverse()) { <div class="bubble @(line.Author == "Ralf" ? "ralf" : null)"><div class="who">@line.Author <time>@line.At.ToLocalTime().ToString("HH:mm")</time></div><p>@line.Text</p></div> }
+                    </div>
+                    <form @onsubmit="Send" @onsubmit:preventDefault class="chat-form"><input class="input" aria-label="Messaggio" @bind="message" maxlength="1000" placeholder="Parla al tavolo…" /><button class="btn btn-mustard btn-small" disabled="@busy">Invia</button></form>
+                </section>
+                <section class="panel panel-body"><h2 style="margin:0 0 10px;font-size:20px">📒 Log partita <span class="small">#@view.Version</span></h2>
+                    <div class="log-list">
+                        @foreach (var item in view.Log) { <details><summary>@item.Version. @item.San <span class="muted">@item.Mossa</span></summary><pre class="protocol">Statocorrente: @item.StatoCorrente
+mossa: @item.Mossa
+NuovoStato: @item.NuovoStato</pre></details> }
+                        @if (view.Log.Length == 0) { <p class="muted small">Nessuna mossa. Il caffè conta come apertura?</p> }
+                    </div>
+                    <div class="row" style="margin-top:12px"><a class="small" download="partita.pgn" href="@DataUrl(view.Pgn, "application/x-chess-pgn")">Scarica PGN</a><a class="small" download="partita.json" href="@DataUrl(JsonSerializer.Serialize(view), "application/json")">Scarica JSON</a></div>
+                </section>
+            </aside>
+        </div>
+    }
+    <SiteFooter>Scacchi standard · nessun cronometro · patte automatiche della libreria Gera.Chess · sessioni remote in memoria</SiteFooter>
+</main>
+
+@code {
+    private readonly string player = Guid.NewGuid().ToString("N");
+    private ChessRoom? room;
+    private ChessView? view;
+    private string invitation = "", message = "", error = "", promotion = "q";
+    private string? selected;
+    private bool busy, disposed;
+    private CancellationTokenSource? ralfCts;
+    private DateTime ralfSince;
+    private string ralfStage = "";
+    private int ralfAttempt;
+    private int Elapsed => busy ? (int)(DateTime.UtcNow - ralfSince).TotalSeconds : 0;
+    private bool white => room?.IsWhite(player) ?? true;
+    private bool CanPlay => !busy && view is { Finished: false, Ready: true } && view.WhiteTurn == white;
+    /// <summary>Ralf owes a move: game vs Ralf, Black to move, nothing running.</summary>
+    private bool RalfToMove => !busy && room is { Remote: false } && view is { Finished: false, WhiteTurn: false };
+    protected override void OnInitialized()
+    {
+        if (Ralf.Connected) Start(false);
+        else error = "Ralf non è configurato (sezione AzureAIFoundry mancante): puoi giocare solo in Remote battle.";
+    }
+    private void Attach(ChessRoom next) { if (room is not null) room.Changed -= Refresh; room = next; room.Changed += Refresh; view = room.View(); selected = null; error = ""; }
+    private void Start(bool remote) { try { Attach(Rooms.Create(remote, player)); } catch (InvalidOperationException ex) { error = ex.Message; } }
+    private void Join() { try { Attach(Rooms.Join(invitation, player)); } catch (InvalidOperationException ex) { error = ex.Message; } }
+    private void Refresh() { if (!disposed) _ = InvokeAsync(() => { if (!disposed) { view = room?.View(); StateHasChanged(); } }); }
+    private static string Square(int i) => $"{(char)('a' + i % 8)}{8 - i / 8}";
+    private static string Glyph(char c) => char.ToLowerInvariant(c) switch { 'k' => "♚", 'q' => "♛", 'r' => "♜", 'b' => "♝", 'n' => "♞", 'p' => "♟", _ => "" };
+    private static string DataUrl(string data, string type) => $"data:{type};base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(data))}";
+    private async Task Click(string sq)
+    {
+        if (!CanPlay || room is null || view is null) return;
+        if (selected is null || !view.LegalMoves.Any(m => m.StartsWith(selected + sq))) { selected = view.LegalMoves.Any(m => m.StartsWith(sq)) ? sq : null; return; }
+        var prefix = selected + sq;
+        var move = view.LegalMoves.FirstOrDefault(m => m == prefix + promotion) ?? view.LegalMoves.First(m => m.StartsWith(prefix));
+        selected = null; error = "";
+        try { Rooms.Move(room, player, move, view.Version); view = room.View(); }
+        catch (InvalidOperationException ex) { error = ex.Message; return; }
+        if (!room.Remote && !view.Finished) await RalfMove();
+    }
+    private async Task RalfMove()
+    {
+        if (room is null || view is null || busy) return;
+        var snapshot = view;
+        try
+        {
+            var reply = await AskRalf(snapshot, "Fai la tua mossa.", true);
+            if (disposed) return;
+            Rooms.Move(room, player, reply.Move!, snapshot.Version, true);
+            Rooms.Chat(room, player, reply.Text, true);
+            view = room.View();
+        }
+        catch (OperationCanceledException) { error = "Hai interrotto Ralf."; }
+        catch (InvalidOperationException ex) { error = ex.Message; }
+        catch (Exception ex) { Logger.LogError(ex, "Ralf move failed"); error = "Ralf si è incartato."; }
+        finally { EndRalf(); }
+    }
+    /// <summary>Calls the model off the circuit context, with live progress and a one-second ticker so the user sees it is alive.</summary>
+    private async Task<AgentReply> AskRalf(ChessView snapshot, string text, bool play)
+    {
+        busy = true; error = "";
+        ralfCts = new CancellationTokenSource();
+        ralfSince = DateTime.UtcNow; ralfAttempt = 1; ralfStage = "Invio la richiesta al modello…";
+        var token = ralfCts.Token;
+        StateHasChanged();
+        _ = Tick(token);
+        var history = snapshot.Log.Select(t => t.San).ToArray();
+        return await Task.Run(() => Ralf.AskAsync(snapshot.Fen, snapshot.LegalMoves, text, play, history,
+            p => _ = InvokeAsync(() => { ralfAttempt = p.Attempt; ralfStage = p.Stage; StateHasChanged(); }), token), token);
+    }
+    private async Task Tick(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try { while (await timer.WaitForNextTickAsync(token) && busy && !disposed) await InvokeAsync(StateHasChanged); }
+        catch (OperationCanceledException) { }
+    }
+    private void StopRalf() => ralfCts?.Cancel();
+    private void EndRalf() { busy = false; ralfCts?.Cancel(); ralfCts?.Dispose(); ralfCts = null; }
+    private async Task Send()
+    {
+        if (busy || room is null || view is null || string.IsNullOrWhiteSpace(message)) return;
+        try { var text = message; message = ""; Rooms.Chat(room, player, text); if (!room.Remote) { busy = true; var reply = await AskRalf(view, text, false); if (!disposed) Rooms.Chat(room, player, reply.Text, true); } view = room.View(); }
+        catch (OperationCanceledException) { error = "Hai interrotto Ralf."; }
+        catch (InvalidOperationException ex) { error = ex.Message; }
+        catch (Exception ex) { Logger.LogError(ex, "Ralf chat failed"); error = "Ralf non risponde: riprova."; }
+        finally { EndRalf(); }
+    }
+    public void Dispose() { disposed = true; ralfCts?.Cancel(); if (room is not null) room.Changed -= Refresh; }
+}

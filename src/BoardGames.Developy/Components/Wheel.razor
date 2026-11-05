@@ -1,0 +1,112 @@
+@* Circular board: one SVG sector per space, drawn once at the bottom and rotated into place.
+   The whole plate is tilted and spun with CSS 3D; tokens counter-rotate so they always stand upright. *@
+<div class="dv-scene @(Flat ? "flat" : null)">
+    <div class="dv-plate" style="transform:@PlateTransform">
+        <svg class="dv-svg" viewBox="-500 -500 1000 1000" role="img" aria-label="Tabellone Developy">
+            <circle r="497" class="dv-rim" />
+            @foreach (var s in Catalog.Board)
+            {
+                var h = View.Holdings.Length > 0 ? View.Holdings[s.Index] : null;
+                var group = s.Group >= 0 ? Catalog.Groups[s.Group] : null;
+                var lines = Lines(s.Name);
+                <g transform="rotate(@(s.Index * 15))" class="dv-space k-@s.Kind.ToString().ToLowerInvariant() @(Selected == s.Index ? "selected" : null) @(h?.Frozen == true ? "frozen" : null)"
+                   @onclick="() => OnSelect.InvokeAsync(s.Index)" role="button" aria-label="@s.Name">
+                    <path d="@SectorPath" class="dv-sector" />
+                    @if (group is not null)
+                    {
+                        <g><path d="@BandPath" class="dv-band g-@group.Color" /><text y="474" class="dv-price">€@s.Price</text></g>
+                    }
+                    else if (s.Kind == SpaceKind.Cloud)
+                    {
+                        <g><path d="@BandPath" class="dv-band g-cloud" /><text y="474" class="dv-price">€@s.Price</text></g>
+                    }
+                    <text y="350" class="dv-icon">@(s.Kind == SpaceKind.Project ? GroupIcon(s.Group) : s.Icon)</text>
+                    <text y="392" class="dv-name">@lines[0]</text>
+                    @if (lines.Length > 1) { <g><text y="413" class="dv-name">@lines[1]</text></g> }
+                    @if (h is { Owner: >= 0 })
+                    {
+                        <circle cy="316" r="11" fill="@Catalog.PlayerColors[h.Owner]" class="dv-owner" />
+                        @if (h.Level is > 0 and < Catalog.MaxLevel) { <g><text y="440" class="dv-level">@string.Concat(Enumerable.Repeat("●", h.Level))</text></g> }
+                        else if (h.Level == Catalog.MaxLevel) { <g><text y="442" class="dv-level arch">◆</text></g> }
+                        @if (h.Frozen) { <g><text y="440" class="dv-level">❄</text></g> }
+                    }
+                    <text y="306" class="dv-index">@s.Index</text>
+                </g>
+            }
+            <circle r="292" class="dv-ring" />
+            <circle r="205" class="dv-hub" />
+            <text y="-40" class="dv-hub-logo">D</text>
+            <text y="18" class="dv-hub-title">DEVELOP<tspan class="accent">Y</tspan></text>
+            <text y="52" class="dv-hub-sub">THE SOFTWARE HOUSE GAME</text>
+            <text y="112" class="dv-hub-pot">🏆 Hackathon €@View.Pot</text>
+        </svg>
+        @foreach (var t in Tokens())
+        {
+            <div class="dv-token @(t.Current ? "current" : null)" style="left:@Pct(t.X);top:@Pct(t.Y);transform:@TokenTransform;--c:@t.Color;z-index:@(t.Z)">
+                <img src="@($"_content/BoardGames.Developy/assets/characters/{t.Role}.webp")" alt="Pedina di @t.Name" width="58" height="60" />
+                <span>@t.Label</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TableView View { get; set; } = default!;
+    /// <summary>Animated positions per seat (may lag behind the server while tokens hop).</summary>
+    [Parameter, EditorRequired] public int[] Shown { get; set; } = [];
+    [Parameter] public double Camera { get; set; }
+    [Parameter] public bool Flat { get; set; }
+    [Parameter] public int? Selected { get; set; }
+    [Parameter] public EventCallback<int> OnSelect { get; set; }
+
+    private const double Tilt = 56;
+    private static readonly string SectorPath = Sector(300, 492);
+    private static readonly string BandPath = Sector(448, 492);
+    private string PlateTransform => Flat ? "rotateX(0deg) rotateZ(0deg)" : $"rotateX({Tilt}deg) rotateZ({F(Camera)}deg)";
+    private string TokenTransform => Flat ? "rotateZ(0deg) rotateX(0deg)" : $"rotateZ({F(-Camera)}deg) rotateX({-Tilt}deg)";
+
+    private static string F(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Pct(double unit) => F(50 + unit / 10) + "%";
+
+    private static (double X, double Y) Point(double r, double degrees)
+    {
+        var a = degrees * Math.PI / 180;
+        return (-r * Math.Sin(a), r * Math.Cos(a));
+    }
+
+    private static string Sector(double r1, double r2)
+    {
+        var (ax, ay) = Point(r2, -7.5); var (bx, by) = Point(r2, 7.5);
+        var (cx, cy) = Point(r1, 7.5); var (dx, dy) = Point(r1, -7.5);
+        return $"M{F(ax)} {F(ay)}A{F(r2)} {F(r2)} 0 0 1 {F(bx)} {F(by)}L{F(cx)} {F(cy)}A{F(r1)} {F(r1)} 0 0 0 {F(dx)} {F(dy)}Z";
+    }
+
+    private static string[] Lines(string name)
+    {
+        if (name.Length <= 10 || !name.Contains(' ')) return [name];
+        var mid = name.Length / 2;
+        var cut = Enumerable.Range(0, name.Length).Where(i => name[i] == ' ').OrderBy(i => Math.Abs(i - mid)).First();
+        return [name[..cut], name[(cut + 1)..]];
+    }
+
+    private static string GroupIcon(int group) => group switch { 0 => "</>", 1 => "⚙", 2 => "◉", _ => "▦" };
+
+    private sealed record TokenPos(double X, double Y, string Color, string Role, string Name, string Label, bool Current, int Z);
+
+    private IEnumerable<TokenPos> Tokens()
+    {
+        var alive = View.Players.Where(p => !p.Bankrupt).ToArray();
+        foreach (var p in alive)
+        {
+            var pos = Shown.Length > p.Seat ? Shown[p.Seat] : p.Position;
+            var mates = alive.Where(o => (Shown.Length > o.Seat ? Shown[o.Seat] : o.Position) == pos).ToArray();
+            var k = Array.FindIndex(mates, o => o.Seat == p.Seat);
+            var spread = mates.Length == 1 ? 0 : (k - (mates.Length - 1) / 2.0) * 4.2;
+            var radius = 400 + (mates.Length > 2 ? (k % 2 == 0 ? 30 : -30) : 0);
+            var (x, y) = Point(radius, pos * 15 + spread);
+            // Tokens nearer the viewer (larger rotated y) must paint on top.
+            var (_, depth) = Point(radius, pos * 15 + spread + Camera);
+            yield return new(x, y, p.Color, p.Role, p.Name, Catalog.RoleOf(p.Role).Short, p.Seat == View.Current && View.Phase != Phase.Over, 10 + (int)((depth + 500) / 10));
+        }
+    }
+}

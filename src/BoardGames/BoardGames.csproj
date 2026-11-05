@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BoardGames.Core\BoardGames.Core.csproj" />
+    <ProjectReference Include="..\BoardGames.Chess\BoardGames.Chess.csproj" />
+    <ProjectReference Include="..\BoardGames.Developy\BoardGames.Developy.csproj" />
+  </ItemGroup>
+</Project>

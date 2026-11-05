@@ -1,0 +1,10 @@
+<footer class="site-foot">
+    @if (ChildContent is not null) { <p>@ChildContent</p> }
+    <p>
+        MIT © 2026 <a href="@SiteLinks.Website" target="_blank" rel="noopener">@SiteLinks.Author</a>
+        · <a href="@SiteLinks.Website" target="_blank" rel="noopener">www.marcoparenzan.it</a>
+        · <a href="@SiteLinks.LinkedIn" target="_blank" rel="noopener">LinkedIn</a>
+        · <a href="@SiteLinks.Repository" target="_blank" rel="noopener">GitHub: marcoparenzan/boardgames</a>
+    </p>
+</footer>
+@code { [Parameter] public RenderFragment? ChildContent { get; set; } }

@@ -1,0 +1,63 @@
+@{
+    var s = Catalog.Board[Index];
+    var h = View.Holdings[Index];
+    var group = s.Group >= 0 ? Catalog.Groups[s.Group] : null;
+    var owner = h.Owner >= 0 ? View.Players[h.Owner] : null;
+    var acts = View.Options.Where(o => o.Space == Index && o.Kind is ActKind.Upgrade or ActKind.Downgrade or ActKind.Freeze or ActKind.Unfreeze).ToArray();
+    var here = View.Players.Where(p => !p.Bankrupt && p.Position == Index).ToArray();
+}
+<section class="dv-card space-card @(group?.Color ?? (s.Kind == SpaceKind.Cloud ? "cloud" : "special"))">
+    <div class="space-head"><small>@(group?.Name ?? KindName(s.Kind)) · CASELLA @Index</small><button class="link" @onclick="OnClose" aria-label="Chiudi">✕</button></div>
+    <h3>@s.Icon @s.Name</h3>
+    <p>@Describe(s)</p>
+    @if (s.Kind == SpaceKind.Project)
+    {
+        <table>
+            <tr><td>Fee base</td><td>€@s.Rent![0]</td></tr>
+            <tr><td>Gruppo completo</td><td>€@(s.Rent[0] * 2)</td></tr>
+            @for (var l = 1; l < Catalog.MaxLevel; l++) { <tr class="@(h.Level == l ? "on" : null)"><td>@l developer</td><td>€@s.Rent[l]</td></tr> }
+            <tr class="@(h.Level == Catalog.MaxLevel ? "on" : null)"><td>Architetto ◆</td><td>€@s.Rent[Catalog.MaxLevel]</td></tr>
+            <tr><td>Costo team</td><td>€@group!.UpgradeCost</td></tr>
+        </table>
+    }
+    else if (s.Kind == SpaceKind.Cloud)
+    {
+        <table>@for (var c = 0; c < 4; c++) { <tr><td>@(c + 1) cloud</td><td>€@Catalog.CloudRent[c]</td></tr> }</table>
+    }
+    @if (s.Buyable)
+    {
+        <p class="owner">@(owner is null ? $"Sul mercato · €{s.Price}" : $"Di {owner.Name} · fee attuale €{h.Fee}{(h.Frozen ? " · ❄ congelato" : "")}")</p>
+    }
+    @if (here.Length > 0) { <p class="owner">Qui: @string.Join(", ", here.Select(p => p.Name))</p> }
+    @if (acts.Length > 0)
+    {
+        <div class="manage">@foreach (var a in acts) { <button disabled="@Busy" @onclick="() => OnAct.InvokeAsync(a)">@BoardGames.Developy.Components.Pages.DevelopyTable.ActLabel(a, View.Players[View.Current].Role)</button> }</div>
+    }
+</section>
+@code {
+    [Parameter, EditorRequired] public TableView View { get; set; } = default!;
+    [Parameter] public int Index { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<Act> OnAct { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static string KindName(SpaceKind k) => k switch
+    {
+        SpaceKind.Start => "PARTENZA", SpaceKind.Event => "IMPREVISTO", SpaceKind.AiLab => "BONUS", SpaceKind.Tax => "TASSA",
+        SpaceKind.Meeting => "PRIGIONE AZIENDALE", SpaceKind.Hackathon => "MONTEPREMI", SpaceKind.Escalation => "PERICOLO", _ => "INFRASTRUTTURA",
+    };
+
+    private static string Describe(Space s) => s.Kind switch
+    {
+        SpaceKind.Start => $"Ogni passaggio apre un nuovo sprint: +€{Catalog.KickoffBonus}.",
+        SpaceKind.Project => "Progetto cliente: chi ci atterra paga la consulting fee. Completa il gruppo per raddoppiarla e assumere team. Senza team e fuori da un gruppo completo può subire un'acquisizione ostile al doppio del prezzo.",
+        SpaceKind.Cloud => "Infrastruttura: la fee cresce con il numero di cloud posseduti.",
+        SpaceKind.Event => "Pesca un imprevisto: può andare bene. Raramente.",
+        SpaceKind.AiLab => "+1 AI Token. I token negoziano le fee a metà o ti fanno uscire dai meeting.",
+        SpaceKind.Tax => $"Ripaga il debito tecnico: €{Catalog.TechDebt} al montepremi dell'Hackathon.",
+        SpaceKind.Meeting => $"Chi è convocato resta qui finché non tira 6, paga €{Catalog.MeetingFee} o usa un AI Token. Al terzo tentativo paga ed esce.",
+        SpaceKind.Hackathon => "Chi atterra qui vince il montepremi: tasse, penali e uscite dai meeting.",
+        SpaceKind.Escalation => "Escalation! Vai dritto all'Endless Meeting, senza passare dal Kick-off.",
+        _ => "",
+    };
+}

@@ -1,0 +1,42 @@
+/* Chess module — scoped under .chess; shared tokens and controls come from BoardGames.Core. */
+.chess .chess-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr); gap: 28px; align-items: start; }
+.chess .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px; margin-bottom: 22px; }
+.chess .toolbar .input { width: 160px; text-transform: uppercase; letter-spacing: 2px; }
+.chess .status-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.chess .status-row h2 { margin: 0; font-size: 20px; }
+.chess .board-frame { padding: clamp(6px, 1.4vw, 14px); background: var(--ink); }
+.chess .chess-board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border: 2px solid #000; border-radius: 8px; overflow: hidden; }
+.chess .sq { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border: 0; padding: 0; font-size: clamp(26px, 5.6vw, 64px); line-height: 1; cursor: pointer; }
+.chess .sq.light { background: #fff1cf; }
+.chess .sq.dark { background: #c49163; }
+.chess .sq.target { background: #7fd6c9; }
+.chess .sq.sel { background: var(--mustard); }
+.chess .sq.last { box-shadow: inset 0 0 0 4px #f3b92999; }
+.chess .sq:hover:not(:disabled) { box-shadow: inset 0 0 0 4px var(--mustard); }
+.chess .sq:disabled { cursor: default; }
+.chess .sq .coord { position: absolute; left: 4px; bottom: 2px; font-size: 10px; font-weight: 800; color: var(--ink); opacity: .7; }
+.chess .sq .dot { position: absolute; width: 24%; height: 24%; border-radius: 50%; background: #0f5e57aa; }
+.chess .piece-w { color: #fff; text-shadow: 0 0 1px #000, 0 2px 1px #000, 1px 0 #000, -1px 0 #000, 0 -1px #000; }
+.chess .piece-b { color: var(--ink); }
+.chess .ralf-card { padding: 16px; background: var(--mustard-soft); transform: rotate(2deg); max-width: 300px; }
+.chess .chat-feed { height: 320px; overflow-y: auto; padding: 14px; display: flex; flex-direction: column-reverse; gap: 10px; }
+.chess .bubble { border: 2px solid var(--ink); border-radius: 12px; padding: 8px 12px; background: #f3f5f6; }
+.chess .bubble.ralf { background: var(--mustard-soft); }
+.chess .bubble .who { font-size: 12px; font-weight: 800; }
+.chess .bubble .who time { font-weight: 400; color: var(--ink-soft); margin-left: 6px; }
+.chess .bubble p { margin: 2px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chess .chat-form { display: flex; gap: 8px; padding: 12px; border-top: 2px solid var(--ink); }
+.chess .chat-form .input { flex: 1; }
+.chess .log-list { max-height: 220px; overflow: auto; display: grid; gap: 6px; }
+.chess .log-list summary { cursor: pointer; font-size: 14px; }
+.chess pre.protocol { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--paper); border-radius: 8px; padding: 8px; margin: 8px 0 0; }
+.chess .ralf-live { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; background: var(--mustard-soft); }
+.chess .ralf-live > div { flex: 1; display: grid; }
+.chess .ralf-live small { color: var(--ink-soft); }
+.chess .ralf-live.slow { background: #fde3df; }
+.chess .spinner { width: 22px; height: 22px; border: 3px solid var(--ink); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+    .chess .chess-layout { grid-template-columns: 1fr; }
+}

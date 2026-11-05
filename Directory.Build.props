@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Authors>Marco Parenzan</Authors>
+    <Copyright>Copyright (c) 2026 Marco Parenzan</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://www.marcoparenzan.it</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/marcoparenzan/boardgames</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+  <PropertyGroup Label="CentralBuildArtifacts">
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>D:\Dev\BuildArtifacts\BoardGames</ArtifactsPath>
+    <PackageOutputPath>D:\Dev\NuGetLocalFeed</PackageOutputPath>
+  </PropertyGroup>
+</Project>

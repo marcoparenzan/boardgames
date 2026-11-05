@@ -1,0 +1,19 @@
+<fieldset class="role-picker">
+    <legend>SCEGLI IL TUO RUOLO</legend>
+    <div class="role-grid">
+        @foreach (var role in Catalog.Roles)
+        {
+            var taken = Taken.Contains(role.Id);
+            <button type="button" class="role-option @(Selected == role.Id ? "selected" : null)" disabled="@taken" @onclick="() => OnPick.InvokeAsync(role.Id)" title="@role.Perk" aria-pressed="@(Selected == role.Id ? "true" : "false")">
+                <img src="@($"_content/BoardGames.Developy/assets/characters/{role.Id}.webp")" alt="" width="82" height="84" loading="lazy" />
+                <span>@role.Name</span>
+            </button>
+        }
+    </div>
+    <p class="perk">@Catalog.RoleOf(Selected).Name: <b>@Catalog.RoleOf(Selected).Perk</b></p>
+</fieldset>
+@code {
+    [Parameter] public string Selected { get; set; } = "developer";
+    [Parameter] public string[] Taken { get; set; } = [];
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+}

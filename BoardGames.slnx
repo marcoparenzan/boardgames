@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BoardGames.Core/BoardGames.Core.csproj" />
+    <Project Path="src/BoardGames.Chess/BoardGames.Chess.csproj" />
+    <Project Path="src/BoardGames.Developy/BoardGames.Developy.csproj" />
+    <Project Path="src/BoardGames/BoardGames.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="src/BoardGames.Tests/BoardGames.Tests.csproj" />
+  </Folder>
+</Solution>

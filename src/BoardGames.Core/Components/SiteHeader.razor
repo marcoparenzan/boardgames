@@ -1,0 +1,11 @@
+@inject IEnumerable<GameDescriptor> Games
+<header class="site-header">
+    <a class="site-brand" href=""><span class="site-mark">M</span> MarcoSoft <b>Board Games</b></a>
+    <nav class="site-nav" aria-label="Giochi">
+        <NavLink href="" Match="NavLinkMatch.All">Sala giochi</NavLink>
+        @foreach (var game in Games.OrderBy(g => g.Order))
+        {
+            <NavLink href="@game.Route.TrimStart('/')">@game.NavTitle</NavLink>
+        }
+    </nav>
+</header>

@@ -1,0 +1,28 @@
+<section class="dv-card dv-chat">
+    <h3>CHAT DELLA WAR ROOM</h3>
+    <div class="feed" aria-live="polite">
+        @foreach (var line in Lines.Reverse().Take(60))
+        {
+            <p class="@(line.Author == "Sistema" ? "sys" : null)"><b>@line.Author</b> @line.Text</p>
+        }
+    </div>
+    @if (CanWrite)
+    {
+        <form @onsubmit="Send" @onsubmit:preventDefault>
+            <input @bind="text" @bind:event="oninput" maxlength="500" placeholder="Scrivi al tavolo…" aria-label="Messaggio" />
+            <button type="submit">INVIA</button>
+        </form>
+    }
+</section>
+@code {
+    [Parameter] public ChatLine[] Lines { get; set; } = [];
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+    private string text = "";
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        var t = text; text = "";
+        await OnSend.InvokeAsync(t);
+    }
+}

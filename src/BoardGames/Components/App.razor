@@ -1,0 +1,28 @@
+@inject IEnumerable<GameDescriptor> Games
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f0df" />
+    <BasePath />
+    <ResourcePreloader />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&amp;family=DM+Sans:wght@400;500;700;800&amp;display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="@Assets["_content/BoardGames.Core/boardgames.css"]" />
+    @foreach (var game in Games.OrderBy(g => g.Order))
+    {
+        <link rel="stylesheet" href="@Assets[game.Stylesheet]" />
+    }
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="icon" type="image/svg+xml" href="@Assets["favicon.svg"]" />
+    <ImportMap />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+</html>

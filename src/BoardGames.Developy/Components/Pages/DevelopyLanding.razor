@@ -1,0 +1,121 @@
+@page "/developy"
+@inject DevelopyRooms Rooms
+@inject ProtectedSessionStorage Storage
+@inject NavigationManager Navigation
+
+<PageTitle>Developy — Softwaropoly</PageTitle>
+
+<div class="dv">
+    <section class="landing">
+        <picture class="landing-art" aria-hidden="true">
+            <source media="(max-width: 900px)" srcset="_content/BoardGames.Developy/assets/developy-board-900.webp" />
+            <img src="_content/BoardGames.Developy/assets/developy-board-1600.webp" alt="" width="1600" height="900" fetchpriority="high" />
+        </picture>
+        <nav><Brand /><a class="back" href="">← SALA GIOCHI</a></nav>
+        <div class="hero-copy">
+            <p class="eyebrow">THE SOFTWARE HOUSE BOARD GAME</p>
+            <h1>BUY PROJECTS.<br /><i>COLLECT BUDGETS.</i><br />SURVIVE DEPLOYMENTS.</h1>
+            <p class="lede">Ogni progetto è profittevole.<br />Finché non comincia.</p>
+            <div class="actions">
+                <button class="primary" @onclick="() => dialog = Dialog.Create">CREA UNA PARTITA <b>→</b></button>
+                <button class="secondary" @onclick="() => dialog = Dialog.Join">UNISCITI CON UN CODICE</button>
+            </div>
+            <ul class="rules">
+                <li><b>Acquisisci</b> i progetti su cui atterri e incassa le consulting fee.</li>
+                <li><b>Completa un gruppo</b> per raddoppiare le fee e assumere developer e architetti.</li>
+                <li><b>Sopravvivi</b> a imprevisti, Tech Debt ed Endless Meeting. Vince la valutazione più alta.</li>
+            </ul>
+        </div>
+        <p class="footnote">2–6 consulenti · bot, hot-seat o remoto · Nessun timesheet richiesto<br />MIT © 2026 <a href="@SiteLinks.Website" target="_blank" rel="noopener">Marco Parenzan</a> · <a href="@SiteLinks.Website" target="_blank" rel="noopener">www.marcoparenzan.it</a> · <a href="@SiteLinks.LinkedIn" target="_blank" rel="noopener">LinkedIn</a> · <a href="@SiteLinks.Repository" target="_blank" rel="noopener">GitHub</a></p>
+    </section>
+</div>
+
+@if (dialog == Dialog.Create)
+{
+    <div class="dv dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-title">
+        <EditForm Model="this" OnValidSubmit="Create" class="dv-dialog">
+            <button type="button" class="close" @onclick="() => dialog = Dialog.None" aria-label="Chiudi">×</button>
+            <p class="eyebrow">NUOVA PARTITA</p>
+            <h2 id="create-title">Come ti chiami?</h2>
+            <p>Il nome sarà visibile agli altri consulenti nella stanza.</p>
+            <label>NOME GIOCATORE<input @bind="name" @bind:event="oninput" maxlength="18" placeholder="es. Marco" autofocus /></label>
+            <RolePicker Selected="@role" OnPick="r => role = r" />
+            <fieldset class="seat-picker">
+                <legend>AVVERSARI (@seats.Count)</legend>
+                @for (var i = 0; i < seats.Count; i++)
+                {
+                    var index = i;
+                    <div class="seat-row">
+                        <span>POSTO @(i + 2)</span>
+                        @foreach (var kind in Enum.GetValues<SeatRequest>())
+                        {
+                            <button type="button" class="@(seats[index] == kind ? "on" : null)" @onclick="() => seats[index] = kind">@SeatName(kind)</button>
+                        }
+                        <button type="button" class="remove" disabled="@(seats.Count <= 1)" @onclick="() => seats.RemoveAt(index)" aria-label="Rimuovi posto">−</button>
+                    </div>
+                }
+                @if (seats.Count < 5) { <button type="button" class="add" @onclick="() => seats.Add(SeatRequest.Bot)">+ AGGIUNGI POSTO</button> }
+                <label class="inline">DURATA
+                    <select @bind="rounds"><option value="12">Sprint breve · 12 round</option><option value="25">Release · 25 round</option><option value="40">Roadmap · 40 round</option></select>
+                </label>
+                <small>Bot: gioca il server. Remoto: posto per un collega con il codice. Locale: un'altra persona allo stesso schermo.</small>
+            </fieldset>
+            @if (!string.IsNullOrEmpty(error)) { <p class="error" role="alert">@error</p> }
+            <button class="primary wide" type="submit" disabled="@busy">ENTRA NELLA WAR ROOM <b>→</b></button>
+        </EditForm>
+    </div>
+}
+@if (dialog == Dialog.Join)
+{
+    <div class="dv dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="join-title">
+        <EditForm Model="this" OnValidSubmit="Join" class="dv-dialog">
+            <button type="button" class="close" @onclick="() => dialog = Dialog.None" aria-label="Chiudi">×</button>
+            <p class="eyebrow">UNISCITI</p>
+            <h2 id="join-title">Hai un codice?</h2>
+            <p>Chiedilo a chi ha creato la stanza: sono 8 caratteri.</p>
+            <label>CODICE STANZA<input @bind="code" @bind:event="oninput" maxlength="12" placeholder="es. K7M2QX9A" autofocus style="text-transform:uppercase;letter-spacing:3px" /></label>
+            @if (!string.IsNullOrEmpty(error)) { <p class="error" role="alert">@error</p> }
+            <button class="primary wide" type="submit">ENTRA <b>→</b></button>
+        </EditForm>
+    </div>
+}
+
+@code {
+    private enum Dialog { None, Create, Join }
+    private Dialog dialog;
+    private string name = "", role = "developer", code = "", error = "";
+    private int rounds = 25;
+    private bool busy;
+    private readonly List<SeatRequest> seats = [SeatRequest.Bot, SeatRequest.Bot, SeatRequest.Bot];
+
+    protected override void OnInitialized()
+    {
+        var query = new Uri(Navigation.Uri).Query;
+        var room = System.Web.HttpUtility.ParseQueryString(query)["room"];
+        if (!string.IsNullOrEmpty(room)) Navigation.NavigateTo($"developy/{RoomCodes.Normalize(room)}");
+    }
+
+    private static string SeatName(SeatRequest k) => k switch { SeatRequest.Bot => "BOT", SeatRequest.Remote => "REMOTO", _ => "LOCALE" };
+
+    private async Task Create()
+    {
+        if (busy) return;
+        busy = true; error = "";
+        try
+        {
+            var token = Guid.NewGuid().ToString("N");
+            var room = Rooms.Create(token, name, role, seats, rounds);
+            await Storage.SetAsync("developy:" + room.Code, token);
+            Navigation.NavigateTo($"developy/{room.Code}");
+        }
+        catch (InvalidOperationException ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void Join()
+    {
+        var normalized = RoomCodes.Normalize(code);
+        if (Rooms.Find(normalized) is null) { error = "Stanza non trovata: controlla il codice."; return; }
+        Navigation.NavigateTo($"developy/{normalized}");
+    }
+}

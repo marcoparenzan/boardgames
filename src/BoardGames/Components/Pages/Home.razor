@@ -1,0 +1,40 @@
+@page "/"
+@inject IEnumerable<GameDescriptor> Games
+
+<PageTitle>MarcoSoft Board Games</PageTitle>
+<main class="page">
+    <SiteHeader />
+    <section class="hero">
+        <div>
+            <p class="eyebrow">Sala giochi · MarcoSoft</p>
+            <h1 class="display">Giochi da tavolo<br /><em>per gente che fa software.</em></h1>
+            <p class="lede">Scegli un tavolo, invita i colleghi con un codice, oppure gioca contro l'AI. Tutto gira sul server: niente installazioni, niente account.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+            <div class="tile" style="left:6%;top:12%;width:34%;height:46%;transform:rotate(-6deg);background:var(--teal-soft)">♞</div>
+            <div class="tile" style="left:36%;top:30%;width:36%;height:52%;transform:rotate(4deg);background:var(--mustard-soft)">🎲</div>
+            <div class="tile" style="left:66%;top:6%;width:28%;height:40%;transform:rotate(-2deg);background:#fde3df">☕</div>
+        </div>
+    </section>
+    <section class="games" aria-label="Giochi disponibili">
+        @foreach (var game in Games.OrderBy(g => g.Order))
+        {
+            <a class="panel game-card accent-@game.Accent" href="@game.Route.TrimStart('/')">
+                <div class="cover" style="background-image:url('@game.Image')" role="img" aria-label="@game.Title"></div>
+                <div class="body">
+                    <h2>@game.Title</h2>
+                    <p class="muted">@game.Tagline</p>
+                    <div class="meta"><span class="chip">@game.Players</span><span class="chip">@game.Duration</span></div>
+                </div>
+            </a>
+        }
+        <div class="panel game-card soon" aria-label="Prossimamente">
+            <div class="cover" style="display:grid;place-items:center;font-size:64px">🗺️</div>
+            <div class="body">
+                <h2>Prossimamente</h2>
+                <p class="muted">Conquista di territori e indagini con carte segrete: l'architettura a moduli è pronta per altri tavoli.</p>
+            </div>
+        </div>
+    </section>
+    <SiteFooter>Blazor Server · .NET 11</SiteFooter>
+</main>
